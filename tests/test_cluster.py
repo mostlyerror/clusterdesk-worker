@@ -59,3 +59,18 @@ def test_cluster_roles_populated():
     clusters = detect_clusters(filings)
     assert "CEO" in clusters[0].roles
     assert "CFO" in clusters[0].roles
+
+def test_window_is_forward_only():
+    """3 insiders across 9 days should produce two separate 5-day clusters, not one."""
+    filings = [
+        make_filing("ACME", "Insider A", date(2026, 1, 5)),   # Mon
+        make_filing("ACME", "Insider B", date(2026, 1, 9)),   # Fri (5 trading days from Jan 5)
+        make_filing("ACME", "Insider C", date(2026, 1, 15)),  # Thu (5 trading days from Jan 9)
+    ]
+    clusters = detect_clusters(filings)
+    # Should detect a cluster — the best forward window from Jan 5 gets A+B,
+    # and from Jan 9 gets B+C. We return the best one (most insiders = 2 either way).
+    assert len(clusters) == 1
+    assert clusters[0].insider_count == 2
+    # The cluster should NOT include all 3 insiders (that would be the bug)
+    assert clusters[0].total_value_usd == 55000 * 2  # exactly 2 insiders' worth

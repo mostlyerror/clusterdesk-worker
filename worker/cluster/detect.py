@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from collections import defaultdict
 from worker.types import Filing, Cluster
 
@@ -45,7 +45,8 @@ def _find_best_cluster(ticker: str, filings: list[Filing]) -> Cluster | None:
     for anchor in filings:
         window = [
             f for f in filings
-            if _trading_day_span(anchor.trade_date, f.trade_date) <= WINDOW_DAYS
+            if f.trade_date >= anchor.trade_date
+            and _trading_day_span(anchor.trade_date, f.trade_date) <= WINDOW_DAYS
         ]
         distinct_insiders = len({f.insider_name for f in window})
         total_value = sum(f.trade_value_usd for f in window)
@@ -67,5 +68,5 @@ def _find_best_cluster(ticker: str, filings: list[Filing]) -> Cluster | None:
         filings=best,
         total_value_usd=sum(f.trade_value_usd for f in best),
         roles=list({f.insider_title for f in best}),
-        first_seen_at=datetime.utcnow(),
+        first_seen_at=datetime.now(timezone.utc),
     )
