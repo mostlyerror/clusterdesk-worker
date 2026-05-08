@@ -52,24 +52,25 @@ def pipeline(dry_run: bool = typer.Option(None)):
     recently_published = db.get_recently_published_tickers(days=30)
     new_clusters = [c for c in clusters if c.ticker not in recently_published]
 
-    scored = []
     for c in new_clusters:
         c.score = score_cluster(c)
-        scored.append(c)
 
-    top = sorted(scored, key=lambda c: c.score, reverse=True)[:3]
+    top = sorted(new_clusters, key=lambda c: c.score, reverse=True)[:3]
     qualifying = [c for c in top if c.score >= min_score]
 
     logging.info("%d qualifying clusters (score ≥ %d)", len(qualifying), min_score)
 
     for cluster in qualifying:
-        publish_ticker_page(cluster, db=db, dry_run=dry_run)
-        post_id = post_to_twitter(cluster, db=db, dry_run=dry_run)
-        db.upsert_cluster(cluster)
-        if post_id and post_id != "dry_run":
-            db.mark_cluster_published(cluster, twitter_post_id=post_id)
-        elif not dry_run:
-            pass  # post was rate-limited, cluster saved but not marked published
+        try:
+            publish_ticker_page(cluster, db=db, dry_run=dry_run)
+            post_id = post_to_twitter(cluster, db=db, dry_run=dry_run)
+            db.upsert_cluster(cluster)
+            if post_id and post_id != "dry_run":
+                db.mark_cluster_published(cluster, twitter_post_id=post_id)
+            elif not dry_run:
+                logging.warning("Twitter post skipped for %s (rate-limited or error) — cluster saved but not marked published", cluster.ticker)
+        except Exception:
+            logging.exception("Failed to publish cluster for %s — continuing", cluster.ticker)
 
 
 @app.command()
@@ -81,9 +82,8 @@ def preview():
 
 
 @app.command()
-def backfill(days: int = typer.Option(14, help="Number of days to backfill")):
-    """Backfill filings from the last N days into the database."""
-    typer.echo(f"Backfilling last {days} days (no publishing)")
+def backfill():
+    """Scrape OpenInsider and upsert filtered filings — no publishing."""
     from worker.scraper.openinsider import scrape_openinsider
     from worker.filter.rules import apply_filters
 
