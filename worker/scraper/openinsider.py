@@ -129,7 +129,7 @@ def _parse_table(html: str) -> list[Filing]:
 
     rows = table.find_all("tr")
     filings: list[Filing] = []
-    scraped_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    scraped_at = datetime.now(timezone.utc)
 
     for row in rows[1:]:  # skip header row
         cells = row.find_all("td")
