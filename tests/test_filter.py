@@ -70,3 +70,9 @@ def test_option_exercise_excluded(mock_10b5, mock_mcap):
     mock_db = MagicMock()
     result = apply_filters([make_filing(transaction_code="M")], db=mock_db)
     assert result == []
+
+@patch("worker.filter.rules.get_market_cap", return_value=None)
+def test_unavailable_market_cap_excluded(mock_mcap):
+    mock_db = MagicMock()
+    result = apply_filters([make_filing()], db=mock_db)
+    assert result == []

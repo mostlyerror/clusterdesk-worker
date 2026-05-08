@@ -14,7 +14,7 @@ def get_market_cap(ticker: str, db: DBClient) -> Optional[int]:
     try:
         info = yf.Ticker(ticker).info
         mcap = info.get("marketCap")
-        if mcap:
+        if mcap is not None:
             db.set_market_cap_cache(ticker, int(mcap))
             return int(mcap)
     except Exception as e:
