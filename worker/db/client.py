@@ -1,3 +1,4 @@
+import dataclasses
 import os
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
@@ -36,7 +37,6 @@ class DBClient:
         self._sb.table("filings").upsert(rows, on_conflict="ticker,insider_name,trade_date,shares,price_per_share").execute()
 
     def upsert_cluster(self, cluster: Cluster) -> None:
-        import dataclasses
         payload = {
             "ticker": cluster.ticker,
             "company_name": cluster.company_name,
@@ -72,7 +72,6 @@ class DBClient:
         ).eq("ticker", cluster.ticker).eq("cluster_end_date", cluster.cluster_end_date.isoformat()).execute()
 
     def upsert_ticker_page(self, cluster: Cluster) -> None:
-        import dataclasses
         payload = {
             "ticker": cluster.ticker,
             "company_name": cluster.company_name,
@@ -95,7 +94,8 @@ class DBClient:
                 "cluster_date": cluster.cluster_end_date.isoformat(),
                 "payload": payload,
                 "score": cluster.score,
-            }
+            },
+            on_conflict="ticker,cluster_date",
         ).execute()
 
     def get_recently_published_tickers(self, days: int = 30) -> set[str]:
@@ -119,7 +119,7 @@ class DBClient:
         seen: dict[str, datetime] = {}
         for row in result.data:
             if row["ticker"] not in seen:
-                seen[row["ticker"]] = datetime.fromisoformat(row["published_at"])
+                seen[row["ticker"]] = datetime.fromisoformat(row["published_at"]).replace(tzinfo=timezone.utc)
         return seen
 
     def get_market_cap_cache(self, ticker: str) -> Optional[int]:
@@ -132,7 +132,7 @@ class DBClient:
         if not result.data:
             return None
         row = result.data[0]
-        fetched_at = datetime.fromisoformat(row["fetched_at"])
+        fetched_at = datetime.fromisoformat(row["fetched_at"]).replace(tzinfo=timezone.utc)
         if (datetime.now(timezone.utc) - fetched_at).total_seconds() > 86400:
             return None
         return row["market_cap_usd"]
@@ -143,7 +143,8 @@ class DBClient:
         ).execute()
 
     def get_clusters_published_this_week(self) -> list[dict]:
-        monday = (datetime.now(timezone.utc) - timedelta(days=datetime.now().weekday())).date()
+        now = datetime.now(timezone.utc)
+        monday = (now - timedelta(days=now.weekday())).date()
         result = (
             self._sb.table("clusters")
             .select("*")
