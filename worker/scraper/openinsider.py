@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "http://openinsider.com"
 URLS = [
-    f"{BASE_URL}/latest-cluster-buys",
-    f"{BASE_URL}/latest-insider-purchases-25k",
+    f"{BASE_URL}/latest-cluster-buys?fd=2",
+    f"{BASE_URL}/latest-insider-purchases-25k?fd=2",
 ]
 
 USER_AGENTS = [
