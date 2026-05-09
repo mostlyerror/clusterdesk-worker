@@ -14,39 +14,53 @@ def send_weekly_email(db: DBClient, dry_run: bool = False) -> None:
         logger.info("No clusters published this week — skipping weekly email")
         return
 
+    subscribers = db.get_email_subscribers()
+    if not subscribers:
+        logger.info("No subscribers — skipping weekly email")
+        return
+
     template_id = os.environ.get("LOOPS_WEEKLY_TEMPLATE_ID", "")
     api_key = os.environ.get("LOOPS_API_KEY", "")
 
+    cluster_data = [
+        {
+            "ticker": c["ticker"],
+            "score": c["score"],
+            "company_name": c["payload"]["company_name"],
+        }
+        for c in clusters
+    ]
+
     if dry_run:
-        logger.info("[DRY_RUN] Would send weekly email with %d clusters", len(clusters))
-        for c in clusters:
-            logger.info("  - %s (score %s)", c.get("ticker"), c.get("score"))
+        logger.info(
+            "[DRY_RUN] Would send weekly email to %d subscribers with %d clusters",
+            len(subscribers), len(clusters),
+        )
+        for c in cluster_data:
+            logger.info("  - %s (score %s)", c["ticker"], c["score"])
         return
 
     if not template_id or not api_key:
         logger.error("LOOPS_WEEKLY_TEMPLATE_ID or LOOPS_API_KEY not set")
         return
 
-    payload = {
-        "transactionalId": template_id,
-        "audience": "all",
-        "dataVariables": {
-            "clusters": [
-                {
-                    "ticker": c["ticker"],
-                    "score": c["score"],
-                    "payload": c["payload"],
-                }
-                for c in clusters
-            ]
-        },
-    }
+    sent = failed = 0
+    for email in subscribers:
+        try:
+            resp = requests.post(
+                LOOPS_API_URL,
+                json={
+                    "transactionalId": template_id,
+                    "email": email,
+                    "dataVariables": {"clusters": cluster_data},
+                },
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            sent += 1
+        except Exception as exc:
+            logger.warning("Failed to send weekly email to %s: %s", email, exc)
+            failed += 1
 
-    resp = requests.post(
-        LOOPS_API_URL,
-        json=payload,
-        headers={"Authorization": f"Bearer {api_key}"},
-        timeout=15,
-    )
-    resp.raise_for_status()
-    logger.info("Weekly email sent: %d clusters", len(clusters))
+    logger.info("Weekly email sent to %d/%d subscribers", sent, sent + failed)

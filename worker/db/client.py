@@ -142,6 +142,10 @@ class DBClient:
             {"ticker": ticker, "market_cap_usd": market_cap_usd, "fetched_at": datetime.now(timezone.utc).isoformat()}
         ).execute()
 
+    def get_email_subscribers(self) -> list[str]:
+        result = self._sb.table("email_subscribers").select("email").execute()
+        return [row["email"] for row in result.data]
+
     def get_clusters_published_this_week(self) -> list[dict]:
         now = datetime.now(timezone.utc)
         monday = (now - timedelta(days=now.weekday())).date()
