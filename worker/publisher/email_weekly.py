@@ -27,8 +27,11 @@ def send_weekly_email(db: DBClient, dry_run: bool = False) -> None:
         name = c["payload"]["company_name"]
         ticker = c["ticker"]
         score = c["score"]
-        lines.append(f"{ticker} — {name} (score: {score})")
-    summary = "\n".join(lines)
+        url = f"https://clusterdesk.io/buys/{ticker}"
+        lines.append(
+            f'<strong><a href="{url}">{ticker}</a></strong> — {name} &nbsp;<span style="color:#22C55E">Score: {score}</span>'
+        )
+    summary = "<br><br>".join(lines)
 
     if dry_run:
         logger.info(
