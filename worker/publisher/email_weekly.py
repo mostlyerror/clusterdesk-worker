@@ -22,22 +22,20 @@ def send_weekly_email(db: DBClient, dry_run: bool = False) -> None:
     template_id = os.environ.get("LOOPS_WEEKLY_TEMPLATE_ID", "")
     api_key = os.environ.get("LOOPS_API_KEY", "")
 
-    cluster_data = [
-        {
-            "ticker": c["ticker"],
-            "score": c["score"],
-            "company_name": c["payload"]["company_name"],
-        }
-        for c in clusters
-    ]
+    lines = []
+    for c in clusters:
+        name = c["payload"]["company_name"]
+        ticker = c["ticker"]
+        score = c["score"]
+        lines.append(f"{ticker} — {name} (score: {score})")
+    summary = "\n".join(lines)
 
     if dry_run:
         logger.info(
             "[DRY_RUN] Would send weekly email to %d subscribers with %d clusters",
             len(subscribers), len(clusters),
         )
-        for c in cluster_data:
-            logger.info("  - %s (score %s)", c["ticker"], c["score"])
+        logger.info("Summary:\n%s", summary)
         return
 
     if not template_id or not api_key:
@@ -52,7 +50,7 @@ def send_weekly_email(db: DBClient, dry_run: bool = False) -> None:
                 json={
                     "transactionalId": template_id,
                     "email": email,
-                    "dataVariables": {"clusters": cluster_data},
+                    "dataVariables": {"summary": summary},
                 },
                 headers={"Authorization": f"Bearer {api_key}"},
                 timeout=15,
