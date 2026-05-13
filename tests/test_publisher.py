@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 from worker.types import Filing, Cluster
 from worker.publisher.twitter import post_to_twitter, _format_tweet
 from worker.publisher.ticker_page import publish_ticker_page
-from worker.publisher.email_weekly import send_weekly_email
+from worker.publisher.email_weekly import send_weekly_email, _build_cluster_payload
 
 def make_cluster() -> Cluster:
     f = Filing(
@@ -39,7 +39,8 @@ def test_format_tweet_contains_ticker():
 def test_dry_run_does_not_call_api():
     mock_db = MagicMock()
     mock_db.get_last_post_times.return_value = {}
-    result = post_to_twitter(make_cluster(), db=mock_db, dry_run=True)
+    with patch("worker.publisher.twitter._can_post", return_value=(True, "")):
+        result = post_to_twitter(make_cluster(), db=mock_db, dry_run=True)
     assert result == "dry_run"
 
 def test_ticker_page_dry_run_skips_webhook():
@@ -59,3 +60,32 @@ def test_weekly_email_skips_when_no_clusters():
     mock_db = MagicMock()
     mock_db.get_clusters_published_this_week.return_value = []
     send_weekly_email(db=mock_db, dry_run=False)
+
+def test_weekly_email_payload_includes_reason_to_care_fields():
+    row = {
+        "ticker": "ACME",
+        "score": 75,
+        "payload": {
+            "company_name": "Acme Corp",
+            "insider_count": 2,
+            "total_value_usd": 125000,
+            "market_cap_usd": 200000000,
+            "cluster_start_date": "2026-01-06",
+            "cluster_end_date": "2026-01-07",
+            "roles": ["CEO", "CFO"],
+        },
+    }
+
+    payload = _build_cluster_payload(row)
+
+    assert payload == {
+        "ticker": "ACME",
+        "score": 75,
+        "company_name": "Acme Corp",
+        "insider_count": 2,
+        "total_value_usd": 125000,
+        "market_cap_usd": 200000000,
+        "cluster_start_date": "2026-01-06",
+        "cluster_end_date": "2026-01-07",
+        "roles": ["CEO", "CFO"],
+    }

@@ -146,6 +146,22 @@ class DBClient:
         result = self._sb.table("email_subscribers").select("email").execute()
         return [row["email"] for row in result.data]
 
+    def get_10b5_1_cache(self, filing_url: str) -> Optional[bool]:
+        result = (
+            self._sb.table("filings")
+            .select("is_10b5_1")
+            .eq("filing_url", filing_url)
+            .not_.is_("is_10b5_1", "null")
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            return None
+        return result.data[0]["is_10b5_1"]
+
+    def set_10b5_1_cache(self, filing_url: str, result: bool) -> None:
+        self._sb.table("filings").update({"is_10b5_1": result}).eq("filing_url", filing_url).execute()
+
     def get_clusters_published_this_week(self) -> list[dict]:
         now = datetime.now(timezone.utc)
         monday = (now - timedelta(days=now.weekday())).date()

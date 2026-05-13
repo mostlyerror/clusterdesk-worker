@@ -67,16 +67,16 @@ def _can_post(cluster: Cluster, db: DBClient) -> tuple[bool, str]:
 
 
 def post_to_twitter(cluster: Cluster, db: DBClient, dry_run: bool = False) -> str | None:
-    can, reason = _can_post(cluster, db)
-    if not can:
-        logger.info("Skipping %s tweet: %s", cluster.ticker, reason)
-        return None
-
     tweet_text = _format_tweet(cluster)
 
     if dry_run:
         logger.info("[DRY_RUN] Would post:\n%s", tweet_text)
         return "dry_run"
+
+    can, reason = _can_post(cluster, db)
+    if not can:
+        logger.info("Skipping %s tweet: %s", cluster.ticker, reason)
+        return None
 
     client = tweepy.Client(
         consumer_key=os.environ["X_API_KEY"],

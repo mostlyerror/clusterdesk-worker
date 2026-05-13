@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 BASE_URL = "http://openinsider.com"
 URLS = [
-    f"{BASE_URL}/latest-cluster-buys?fd=2",
     f"{BASE_URL}/latest-insider-purchases-25k?fd=2",
 ]
 
@@ -27,23 +26,22 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
 ]
 
-# Column indices common to both tables
+# Column indices for latest-insider-purchases-25k table
+# [0]=X [1]=FilingDate [2]=TradeDate [3]=Ticker [4]=Company
+# [5]=InsiderName [6]=Title [7]=TradeType [8]=Price
+# [9]=Qty [10]=Owned [11]=ΔOwn [12]=Value
 COL_FILING_DATE = 1
 COL_TRADE_DATE = 2
 COL_TICKER = 3
 COL_COMPANY_NAME = 4
+COL_INSIDER_NAME = 5
+COL_TITLE = 6
 COL_TRADE_TYPE = 7
 COL_PRICE = 8
 COL_QTY = 9
 COL_OWNED = 10
 COL_DELTA_OWN = 11
 COL_VALUE = 12
-
-# Columns that differ between the two tables
-# cluster_buys:    col[5]=Industry, col[6]=Ins
-# insider_purchases: col[5]=Insider Name, col[6]=Title
-COL_INSIDER_NAME_OR_INDUSTRY = 5
-COL_TITLE_OR_INS = 6
 
 
 def _fetch_html(url: str) -> str:
@@ -107,25 +105,29 @@ def _parse_date(text: str) -> Optional[date]:
     return None
 
 
-def _is_insider_purchases_table(headers: list) -> bool:
-    """Determine if this is the insider_purchases table (has Insider Name col)."""
-    header_texts = [h.get_text(strip=True) for h in headers]
-    # insider_purchases has 'Insider\xa0Name' or 'Insider Name' at index 5
-    if len(header_texts) > 5:
-        col5 = header_texts[5].replace("\xa0", " ")
-        return "Insider" in col5
-    return False
+_TITLE_CODES = {
+    "4": "10% Owner",
+    "10": "10% Owner",
+    "D": "Director",
+    "O": "Officer",
+    "DO": "Dir & Officer",
+    "OD": "Dir & Officer",
+    "H": "Officer, Dir & 10% Owner",
+    "": "Unknown",
+}
+
+
+def _normalize_title(raw: str) -> str:
+    """Map SEC Form 4 relationship codes to readable strings."""
+    return _TITLE_CODES.get(raw.strip(), raw.strip()) or "Unknown"
 
 
 def _parse_table(html: str) -> list[Filing]:
-    """Parse a tinytable from OpenInsider HTML into a list of Filing objects."""
+    """Parse the tinytable from OpenInsider HTML into a list of Filing objects."""
     soup = BeautifulSoup(html, "lxml")
     table = soup.find("table", class_="tinytable")
     if table is None:
         return []
-
-    headers = table.find_all("th")
-    is_insider_table = _is_insider_purchases_table(headers)
 
     rows = table.find_all("tr")
     filings: list[Filing] = []
@@ -139,13 +141,10 @@ def _parse_table(html: str) -> list[Filing]:
         try:
             # --- Filing date & URL ---
             filing_date_cell = cells[COL_FILING_DATE]
-            filing_date_text = filing_date_cell.get_text(strip=True)
-            filing_date = _parse_date(filing_date_text)
+            filing_date = _parse_date(filing_date_cell.get_text(strip=True))
             if filing_date is None:
                 continue
 
-            # The filing URL is the href on the filing date link (SEC link on insider table,
-            # ticker link on cluster table — use what's there)
             filing_url = ""
             link = filing_date_cell.find("a", href=True)
             if link:
@@ -153,26 +152,19 @@ def _parse_table(html: str) -> list[Filing]:
                 filing_url = href if href.startswith("http") else f"{BASE_URL}{href}"
 
             # --- Trade date ---
-            trade_date_text = cells[COL_TRADE_DATE].get_text(strip=True)
-            trade_date = _parse_date(trade_date_text)
+            trade_date = _parse_date(cells[COL_TRADE_DATE].get_text(strip=True))
             if trade_date is None:
                 continue
 
             # --- Ticker & company ---
             ticker = cells[COL_TICKER].get_text(strip=True)
             company_name = cells[COL_COMPANY_NAME].get_text(strip=True)
-
             if not ticker:
                 continue
 
-            # --- Insider name & title (differ by table type) ---
-            if is_insider_table:
-                insider_name = cells[COL_INSIDER_NAME_OR_INDUSTRY].get_text(strip=True)
-                insider_title = cells[COL_TITLE_OR_INS].get_text(strip=True)
-            else:
-                # cluster_buys: no per-filing insider name — use empty string
-                insider_name = ""
-                insider_title = cells[COL_TITLE_OR_INS].get_text(strip=True)  # "Ins" count
+            # --- Insider name & title ---
+            insider_name = cells[COL_INSIDER_NAME].get_text(strip=True)
+            insider_title = _normalize_title(cells[COL_TITLE].get_text(strip=True))
 
             # --- Transaction code ---
             trade_type_text = cells[COL_TRADE_TYPE].get_text(strip=True)
@@ -235,12 +227,10 @@ def _parse_table(html: str) -> list[Filing]:
 
 
 def scrape_openinsider() -> list[Filing]:
-    """Scrape both OpenInsider URLs and return deduplicated Filing list."""
+    """Scrape OpenInsider and return deduplicated Filing list."""
     all_filings: list[Filing] = []
 
-    for i, url in enumerate(URLS):
-        if i > 0:
-            time.sleep(2)
+    for url in URLS:
         try:
             html = _fetch_html(url)
         except requests.RequestException:

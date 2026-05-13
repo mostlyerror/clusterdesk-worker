@@ -12,14 +12,7 @@ def send_weekly_email(db: DBClient, dry_run: bool = False) -> None:
         logger.info("No clusters published this week — skipping weekly email")
         return
 
-    cluster_data = [
-        {
-            "ticker": c["ticker"],
-            "score": c["score"],
-            "company_name": c["payload"]["company_name"],
-        }
-        for c in clusters
-    ]
+    cluster_data = [_build_cluster_payload(c) for c in clusters]
 
     if dry_run:
         logger.info(
@@ -49,3 +42,18 @@ def send_weekly_email(db: DBClient, dry_run: bool = False) -> None:
         data.get("sent", 0),
         data.get("failed", 0),
     )
+
+
+def _build_cluster_payload(cluster: dict) -> dict:
+    payload = cluster.get("payload") or {}
+    return {
+        "ticker": cluster["ticker"],
+        "score": cluster["score"],
+        "company_name": payload.get("company_name", cluster["ticker"]),
+        "insider_count": payload.get("insider_count"),
+        "total_value_usd": payload.get("total_value_usd"),
+        "market_cap_usd": payload.get("market_cap_usd"),
+        "cluster_start_date": payload.get("cluster_start_date"),
+        "cluster_end_date": payload.get("cluster_end_date"),
+        "roles": payload.get("roles", []),
+    }

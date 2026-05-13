@@ -1,14 +1,24 @@
 import logging
 import time
+from typing import TYPE_CHECKING, Optional
 import requests
+
+if TYPE_CHECKING:
+    from worker.db.client import DBClient
 
 logger = logging.getLogger(__name__)
 PLAN_KEYWORDS = ("10b5-1", "rule 10b5-1", "10b5–1")
 
 
-def is_10b5_1_plan(filing_url: str) -> bool:
+def is_10b5_1_plan(filing_url: str, db: Optional["DBClient"] = None) -> bool:
     if not filing_url:
         return False
+
+    if db is not None:
+        cached = db.get_10b5_1_cache(filing_url)
+        if cached is not None:
+            return cached
+
     try:
         time.sleep(0.5)
         resp = requests.get(
@@ -18,7 +28,12 @@ def is_10b5_1_plan(filing_url: str) -> bool:
         )
         resp.raise_for_status()
         text = resp.text.lower()
-        return any(kw in text for kw in PLAN_KEYWORDS)
+        result = any(kw in text for kw in PLAN_KEYWORDS)
     except Exception as e:
         logger.warning("Could not fetch SEC filing %s: %s — not excluding", filing_url, e)
         return False
+
+    if db is not None:
+        db.set_10b5_1_cache(filing_url, result)
+
+    return result

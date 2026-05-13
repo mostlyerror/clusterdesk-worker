@@ -43,7 +43,7 @@ def _reject_reason(f: Filing, db: DBClient) -> str:
     if mcap > LOCKED_FILTERS["max_market_cap_usd"]:
         return f"market_cap={mcap} above max"
 
-    if is_10b5_1_plan(f.filing_url):
+    if is_10b5_1_plan(f.filing_url, db=db):
         return "10b5-1 plan detected"
 
     return ""
